@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History
 
+- **0.0.7** (2025-10-17) - API Structure Simplification: Removed Versioning Complexity
 - **0.0.6** (2025-10-17) - Events REST API Endpoints: Complete CRUD with Smart Query Routing
 - **0.0.5** (2025-10-17) - EventOperations Domain Logic: Async CRUD + Business Rules
 - **0.0.4** (2025-10-17) - Database Schema Deployment: Migration Execution + Verification
@@ -14,6 +15,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.0.2** (2025-10-17) - Spirits Model + Async Database Layer + Naming Consistency
 - **0.0.1** (2025-10-17) - Foundation: TimestampMixin + Events model
 - **0.0.0** (2025-10-17) - Initial project structure (FastAPI + Next.js)
+
+---
+
+## [0.0.7] - 2025-10-17
+
+### Changed
+
+**API Directory Structure** - Simplified from nested versioning to flat layout
+- **Before**: `api/v1/endpoints/` (4 directory levels)
+- **After**: `api/routes/` (2 directory levels)
+- **Rationale**: API versioning overkill for MVP - YAGNI principle applied
+
+**URL Structure Changes**:
+- `/api/v1/events` → `/api/events`
+- `/api/v1/health` → `/api/health`
+- Prefix now configurable via `settings.API_PREFIX`
+
+**Configuration** (`backend/app/core/config.py`):
+- Renamed `API_V1_STR` → `API_PREFIX`
+- Updated value from `"/api/v1"` → `"/api"`
+
+**Main Application** (`backend/main.py`):
+- Updated import: `backend.app.api.v1.api` → `backend.app.api.router`
+- Updated router prefix to use `settings.API_PREFIX`
+
+### Added
+
+**New Files**:
+- `backend/app/api/router.py` - Main router aggregation (replaces `v1/api.py`)
+- `backend/app/api/routes/__init__.py` - Route package marker
+
+### Deleted
+
+**Removed Files**:
+- Entire `backend/app/api/v1/` directory (6 files total)
+- Nested `endpoints/` subdirectory structure
+
+### Notes
+
+**Design Decision**: Versioning adds unnecessary complexity at v0.0.x. Can easily add back when hitting v1.0 or when breaking changes require migration path.
+
+**Benefits**: Simpler navigation, fewer files, cleaner imports, shorter URLs, faster iteration.
+
+**Frontend Impact**: API base URL needs update from `/api/v1` to `/api` in environment configuration.
 
 ---
 

@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # API Settings
     PROJECT_NAME: str = "Elephantasm API"
     VERSION: str = "0.1.0"
-    API_V1_STR: str = "/api/v1"
+    API_PREFIX: str = "/api"
 
     # Database Settings
     DATABASE_URL: str = "postgresql+asyncpg://elephantasm:dev_password@localhost:5432/elephantasm"
