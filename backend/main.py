@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1.api import api_router
-from app.core.config import settings
+from backend.app.api.v1.api import api_router
+from backend.app.core.config import settings
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -27,10 +27,16 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 async def root():
     """Root endpoint."""
     return {
-        "message": "Welcome to the API",
-        "docs": "/docs",
-        "version": settings.VERSION
+        "message": "Elephantasm LTAM API",
+        "version": settings.VERSION,
+        "docs": "/docs"
     }
+
+
+@app.get("/health")
+async def health():
+    """Health check endpoint."""
+    return {"status": "healthy"}
 
 
 if __name__ == "__main__":

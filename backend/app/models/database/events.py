@@ -7,7 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlmodel import Column, Field, SQLModel
+from sqlmodel import Column, Field, SQLModel, Relationship
 
 from backend.app.models.database.mixins.timestamp import TimestampMixin
 from backend.app.models.database.spirits import Spirit
@@ -41,8 +41,8 @@ class Event(EventBase, TimestampMixin, table=True):
     id: UUID = Field(default=None, primary_key=True, sa_column_kwargs={"server_default": text("gen_random_uuid()")})
     is_deleted: bool = Field(default=False)
 
-    # Relationship to Spirit (will be fully wired after migrations)
-    # spirit: Spirit = Relationship(back_populates="events")
+    # Relationship to Spirit
+    spirit: Spirit = Relationship(back_populates="events")
 
 
 class EventCreate(EventBase):

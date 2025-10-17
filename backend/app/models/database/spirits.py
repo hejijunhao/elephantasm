@@ -6,7 +6,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlmodel import Column, Field, SQLModel
+from sqlmodel import Column, Field, SQLModel, Relationship
 
 from backend.app.models.database.mixins.timestamp import TimestampMixin
 
@@ -25,9 +25,9 @@ class Spirit(SpiritBase, TimestampMixin, table=True):
     id: UUID = Field(default=None, primary_key=True, sa_column_kwargs={"server_default": text("gen_random_uuid()")})
     is_deleted: bool = Field(default=False)
 
-    # Relationships (will be populated as we add models)
-    # events: list["Event"] = Relationship(back_populates="spirit")
-    # memories: list["Memory"] = Relationship(back_populates="spirit")
+    # Relationships
+    events: list["Event"] = Relationship(back_populates="spirit")
+    # memories: list["Memory"] = Relationship(back_populates="spirit") #TODO: populate after memories model
 
 
 class SpiritCreate(SpiritBase):

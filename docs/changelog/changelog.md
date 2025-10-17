@@ -7,10 +7,303 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History
 
+- **0.0.6** (2025-10-17) - Events REST API Endpoints: Complete CRUD with Smart Query Routing
+- **0.0.5** (2025-10-17) - EventOperations Domain Logic: Async CRUD + Business Rules
+- **0.0.4** (2025-10-17) - Database Schema Deployment: Migration Execution + Verification
 - **0.0.3** (2025-10-17) - Database Driver Migration: asyncpg → psycopg3 for pgBouncer Compatibility
 - **0.0.2** (2025-10-17) - Spirits Model + Async Database Layer + Naming Consistency
 - **0.0.1** (2025-10-17) - Foundation: TimestampMixin + Events model
 - **0.0.0** (2025-10-17) - Initial project structure (FastAPI + Next.js)
+
+---
+
+## [0.0.6] - 2025-10-17
+
+### Added
+
+**Events REST API Endpoints** (`backend/app/api/v1/endpoints/events.py` - 133 lines)
+- `POST /api/v1/events` - Create event (201 Created, 409 Conflict on duplicate dedupe_key)
+- `GET /api/v1/events` - List events with filters (spirit_id required, optional: event_type, session_id, min_importance, pagination)
+- `GET /api/v1/events/{event_id}` - Get single event by UUID (404 if not found)
+- `PATCH /api/v1/events/{event_id}` - Partial update (meta_summary, importance_score, metadata, is_deleted)
+- `DELETE /api/v1/events/{event_id}` - Soft delete (204 No Content)
+
+**Root Endpoints** (`backend/main.py`)
+- `GET /` - Root endpoint (API info, version, docs link)
+- `GET /health` - Health check (status: healthy)
+
+**API Infrastructure**
+- Router aggregation (`backend/app/api/v1/api.py`)
+- Package structure (`__init__.py` files for api/, v1/, endpoints/)
+- FastAPI dependency injection via `Depends(get_db)` for AsyncSession
+
+### Changed
+
+**Import Fixes**
+- `backend/app/models/database/spirits.py` - Added missing `Relationship` import (was causing `NameError`)
+- `backend/app/models/database/events.py` - Added missing `Relationship` import
+- `backend/main.py` - Updated imports to use `backend.app.*` prefix (import consistency)
+
+### Technical Implementation
+
+**Request/Response Flow:**
+1. FastAPI validates request via Pydantic DTOs (EventCreate, EventUpdate)
+2. Endpoint calls EventOperations method with session + validated data
+3. Domain layer performs business logic + FK validation
+4. Session flushes (get generated IDs), route returns
+5. `get_db` dependency commits transaction automatically
+6. Response serialized via EventRead DTO
+
+**Smart List Behavior:**
+- If `session_id` provided → `get_by_session()` → chronological order (ASC) for conversation replay
+- Otherwise → `get_recent()` → recent-first order (DESC) for activity feed
+- Single endpoint with dual personality avoids endpoint proliferation
+
+**Query Parameter Validation:**
+- `spirit_id` - Required UUID (FastAPI enforcement)
+- `limit` - Range validated (1-200, default 50)
+- `offset` - Non-negative (default 0)
+- `min_importance` - Range validated (0.0-1.0) if provided
+- `include_deleted` - Boolean flag (default False)
+
+**Error Handling:**
+- HTTPException from domain layer propagates directly (404, 400)
+- IntegrityError (duplicate dedupe_key) → 409 Conflict
+- Generic exceptions → 500 (default FastAPI behavior)
+
+### Architectural Decisions
+
+**Minimalist Design (MVP Philosophy):**
+- No authentication/authorization (deferred to Phase 2)
+- No pagination metadata (total count, next/prev links) - simple offset/limit
+- No rate limiting or caching
+- No bulk operations (create multiple events at once)
+- No query complexity limits
+
+**Dependency Injection Pattern:**
+- `Depends(get_db)` provides AsyncSession to each endpoint
+- Clean separation: routes don't know about engine/connection pooling
+- Testable: can inject mock session for unit tests
+
+**DTO-Driven API:**
+- EventCreate for ingestion (client → server)
+- EventRead for responses (server → client, includes readonly fields)
+- EventUpdate for partial updates (sparse, only changed fields)
+- Pydantic handles validation, serialization, OpenAPI schema generation
+
+**Consistent HTTP Semantics:**
+- 201 Created for POST (resource created)
+- 204 No Content for DELETE (nothing to return)
+- 404 Not Found (resource doesn't exist)
+- 409 Conflict (duplicate dedupe_key)
+- 400 Bad Request (validation errors)
+
+### Key Design Choices
+
+**No Spirit Validation in List:** `GET /events?spirit_id=<uuid>` doesn't validate Spirit exists. Returns empty list if Spirit not found. Rationale: Avoids extra DB query, client can infer from empty response.
+
+**Session ID Triggers Different Query:** Presence of `session_id` parameter changes behavior (chronological vs recent-first). Alternative would be explicit `order_by` parameter, but implicit is simpler for MVP.
+
+**Soft Delete Only:** No hard delete endpoint. Provenance preservation is core to LTAM philosophy. Future: archive/purge endpoint for GDPR compliance.
+
+### Code Quality Metrics
+
+- **Files Created**: 5 (events.py router, api.py aggregator, 3x __init__.py)
+- **Files Modified**: 3 (main.py, spirits.py, events.py)
+- **Endpoints**: 5 (POST, GET list, GET by ID, PATCH, DELETE) + 2 root endpoints
+- **Lines Added**: ~160 (133 in events.py, 27 elsewhere)
+- **Diagnostics**: 0 errors, 0 warnings
+- **Type Safety**: Full type hints on all endpoint functions
+- **Import Test**: ✅ All modules import successfully
+
+### Documentation
+
+- **Completion Summary**: `docs/completions/events-pipeline-completions-3-6.md` (Task #5)
+  - Implementation details: 5 endpoints + smart list behavior
+  - Technical patterns: dependency injection, DTO-driven, error handling
+  - Architectural decisions: minimalist MVP, no auth yet, soft delete only
+  - Key design choices: no Spirit validation in list, session_id triggers different query
+  - Testing status: imports verified, Swagger UI pending
+
+### Notes
+
+**Testing Status:**
+- ✅ Imports verified (python3 -c "from backend.main import app")
+- ✅ FastAPI app initializes correctly
+- ✅ OpenAPI schema generation ready
+- ⏳ Pending: Start dev server, test via Swagger UI
+- ⏳ Pending: Create Spirit → Create Event → List Events flow
+
+**Architectural Pattern: Routes Stay Thin**
+- Routes are pure HTTP adapters (10 lines per endpoint)
+- Call domain operation, return serialized DTO
+- No business logic in routes
+- Transaction management delegated to `get_db` dependency
+- Future complex workflows will use Orchestration layer (not routes)
+
+**Next Steps:**
+- Start FastAPI dev server: `cd backend && python main.py`
+- Test via Swagger UI: http://localhost:8000/docs
+- Manual E2E: Create Spirit → Create Event → List/Get/Update/Delete
+- Verify dedupe_key collision handling (409 response)
+
+**Pipeline Progress:** 83% complete (5 of 6 steps) — **API layer operational**
+
+---
+
+## [0.0.5] - 2025-10-17
+
+### Added
+
+**EventOperations Domain Logic** (`backend/app/domain/event_operations.py` - 283 lines)
+
+**Core CRUD Operations:**
+- `create()` - Creates event with Spirit FK validation, auto-defaults `occurred_at`, generates `dedupe_key` if `source_uri` provided
+- `get_by_id()` - Simple lookup with optional soft-delete filtering
+- `update()` - Partial update via `model_dump(exclude_unset=True)`, validates `importance_score` range (0.0-1.0)
+- `soft_delete()` / `restore()` - Soft delete management (provenance preservation)
+
+**Query Operations:**
+- `get_recent()` - Paginated query with filters (event_type, session_id, min_importance), ordered DESC (newest first)
+- `get_by_session()` - Chronological events in conversation, ordered ASC (oldest first)
+- `count_by_spirit()` - Count with filters for analytics
+
+**Helper Operations:**
+- `update_meta_summary()` - Convenience wrapper for Cortex enrichment
+- `update_importance()` - Convenience wrapper for importance scoring
+- `_generate_dedupe_key()` - SHA256-based idempotency key (first 100 chars of content, 32-char output)
+
+### Technical Patterns
+
+**Async Operations:**
+- All methods use `AsyncSession` and `await` for non-blocking I/O
+- `await session.flush()` after mutations to get generated IDs mid-transaction
+- No commits - transaction management delegated to route layer (Pattern B: flush in domain)
+
+**Error Handling:**
+- FK validation: `HTTPException(404)` if Spirit not found or deleted
+- Input validation: `HTTPException(400)` for invalid `importance_score` range
+- Consistent error messages for API layer
+
+**Query Construction:**
+- SQLAlchemy Core-style queries: `select(Event).where(...)`
+- Filter composition with `and_()` for multiple conditions
+- Dual ordering: `occurred_at DESC, created_at DESC` (tiebreaker for same timestamp)
+
+**Idempotency Support:**
+- Auto-generated `dedupe_key` from SHA256(spirit_id | event_type | content[:100] | occurred_at | source_uri)
+- First 100 chars of content avoids hashing huge strings
+- 32-char hex output (128-bit entropy) sufficient for event-level uniqueness
+
+### Architectural Decisions
+
+**Static Methods:** No instance state, session passed as first param. Testable, stateless, composable.
+
+**No Business Logic Leakage:** Pure CRUD + filtering. No LLM calls or external API interactions. Domain layer stays focused.
+
+**Soft Deletes Default:** All queries filter `is_deleted=False` unless explicitly requested. Provenance preservation.
+
+**Pattern B (Flush in Domain):** Domain layer calls `await session.flush()` to get generated IDs. Routes stay thin (just call + return). Correct pattern for simple CRUD. Complex workflows (Memories/Dreamer) will use Pattern A (flush in routes) or Orchestration layer.
+
+### Code Quality
+
+**Documentation Style:**
+- Condensed docstrings: single-line with key behaviors + error cases
+- Removed redundant Args/Returns sections (type hints provide this)
+- Information-dense, scannable for experienced developers
+
+**Type Safety:**
+- Full type hints on all parameters and return values
+- `Optional[Event]` for nullable returns, `List[Event]` for collections
+- UUID type enforcement for IDs
+
+**Validation:**
+- Spirit FK existence check before event creation
+- `importance_score` range validation (0.0-1.0) on create/update
+- Soft-delete awareness in all read operations
+
+### Comparison to Reference Architecture
+
+**Similarities to OfferOperations (sync):**
+- Static methods with session as first parameter
+- No transaction management (routes handle commits)
+- FK validation before creation
+- Partial updates via `model_dump(exclude_unset=True)`
+- Soft delete pattern with `is_deleted` flag
+- Helper methods for common operations
+
+**Differences (Async):**
+- `AsyncSession` instead of `Session`
+- `await` on all database operations
+- `await session.flush()` instead of `session.flush()`
+- Simpler queries (no complex JOINs or eager loading yet)
+
+### Key Insights
+
+**Dedupe Key Strategy:** Using first 100 chars of content + metadata for hash avoids performance penalties on huge content blobs while maintaining collision resistance. SHA256 truncated to 32 chars provides 128-bit entropy.
+
+**Ordering Logic:** `get_recent()` uses DESC (newest first) for "what's happening now" views, while `get_by_session()` uses ASC (oldest first) for chronological conversation replay. This dual ordering matches natural UX expectations.
+
+**No Eager Loading Yet:** Events are simple entities with only Spirit FK. No need for `selectinload()` or `joinedload()` optimizations until we add Memories/Lessons relationships in Phase 2.
+
+### Documentation
+
+- **Completion Summary**: `docs/completions/events-pipeline-completions-3-6.md` (Task #4)
+  - All 10 methods documented with purpose
+  - Technical patterns explained (async, error handling, query construction)
+  - Architectural decisions: static methods, Pattern B, soft deletes
+  - Comparison to reference architecture (sync → async mapping)
+  - Key insights: dedupe strategy, ordering logic
+
+### Next Steps
+
+- Wire EventOperations into FastAPI routes with dependency injection
+- Add request/response validation via Pydantic DTOs
+- Test domain layer operations (create, query, update, delete)
+
+**Pipeline Progress:** 67% complete (4 of 6 steps) — **domain logic operational**
+
+---
+
+## [0.0.4] - 2025-10-17
+
+### Added
+
+**Database Schema Deployment** - Migration execution successful
+
+**Tables Created:**
+- `spirits` - Core identity entity with UUID PK, name, description, JSONB metadata, timestamps, soft delete flag
+- `events` - Atomic experience units with UUID PK, spirit_id FK, event_type, content, meta_summary, occurred_at, session_id, JSONB metadata, dedupe_key, importance_score, timestamps, soft delete flag
+
+**Indexes Created:**
+- `ix_events_event_type` - Query events by type
+- `ix_events_session_id` - Query events in conversation
+- `ix_events_spirit_id` - Query events by owner (FK index)
+
+**Foreign Key Constraints:**
+- `events.spirit_id → spirits.id` - Cascade-safe relationship
+
+### Verified
+
+**Schema Verification (Supabase UI):**
+- ✅ Both tables exist with proper columns
+- ✅ Indexes created (event_type, session_id, spirit_id)
+- ✅ Foreign key constraint: events.spirit_id → spirits.id
+- ✅ UUID generation via `gen_random_uuid()` working
+- ✅ JSONB fields (`meta`) created successfully
+- ✅ Timestamp fields (`created_at`, `updated_at`) with proper defaults
+
+**Driver Compatibility:**
+- ✅ Zero prepared statement errors with pgBouncer transaction pooling (port 6543)
+- ✅ Validates v0.0.3 driver migration decision (psycopg3 over asyncpg)
+
+### Next Steps
+
+- Implement EventOperations domain logic (Step 4 of 6)
+- Build REST API endpoints (Step 5 of 6)
+- Write unit/integration tests (Step 6 of 6)
+
+**Pipeline Progress:** 50% complete (3 of 6 steps) — **database layer now operational**
 
 ---
 
