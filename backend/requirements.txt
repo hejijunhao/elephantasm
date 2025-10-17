@@ -6,11 +6,11 @@ uvicorn[standard]==0.32.1
 pydantic==2.10.3
 pydantic-settings==2.6.1
 
-# Database (uncomment as needed)
-# sqlalchemy==2.0.35
-# alembic==1.13.3
-# psycopg2-binary==2.9.9  # PostgreSQL
-# asyncpg==0.30.0  # Async PostgreSQL
+# Database
+sqlalchemy[asyncio]==2.0.35
+sqlmodel==0.0.22
+alembic==1.13.3
+psycopg[binary]==3.2.3  # Async PostgreSQL driver (pgBouncer-compatible)
 
 # Authentication & Security
 python-jose[cryptography]==3.3.0

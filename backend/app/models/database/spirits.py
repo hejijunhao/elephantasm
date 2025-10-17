@@ -1,6 +1,7 @@
 """Spirits model - the owner entity in Elephantasm."""
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
@@ -14,7 +15,7 @@ class SpiritBase(SQLModel):
     """Shared fields for Spirit model."""
     name: str = Field(max_length=255, description="Human-readable spirit name")
     description: str | None = Field(default=None, nullable=True, description="Brief description")
-    metadata: dict = Field(default_factory=dict, sa_column=Column(JSONB))
+    meta: dict[str, Any] | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
 
 class Spirit(SpiritBase, TimestampMixin, table=True):
@@ -45,5 +46,5 @@ class SpiritUpdate(SQLModel):
     """Fields that can be updated."""
     name: str | None = None
     description: str | None = None
-    metadata: dict | None = None
+    meta: dict[str, Any] | None = None
     is_deleted: bool | None = None

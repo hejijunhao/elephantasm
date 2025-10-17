@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
@@ -27,7 +28,7 @@ class EventBase(SQLModel):
     content: str = Field(description="Human-readable message content")
     occurred_at: datetime | None = Field(default=None, description="When event occurred (source time)", nullable=True)
     session_id: str | None = Field(default=None, max_length=255, index=True, nullable=True)
-    metadata: dict = Field(default_factory=dict, sa_column=Column(JSONB))
+    meta: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
     source_uri: str | None = Field(default=None, nullable=True)
     dedupe_key: str | None = Field(default=None, max_length=255, nullable=True)
     importance_score: float | None = Field(default=None, ge=0.0, le=1.0, nullable=True)
@@ -58,7 +59,7 @@ class EventRead(EventBase):
 
 class EventUpdate(SQLModel):
     """Fields that can be updated."""
-    metadata: dict | None = None
+    meta: dict[str, Any] | None = None
     importance_score: float | None = None
     meta_summary: str | None = None
     is_deleted: bool | None = None
