@@ -1,1 +1,1 @@
-Please take a look at .claude/vision.md, docs/overview.md and docs/changelog.md (only first ~200 lines) so you have a good overview of what we're building/working on.
+Please take a look at .claude/vision.md, docs/overview.md and docs/changelog/changelog.md (only first ~200 lines) so you have a good overview of what we're building/working on.

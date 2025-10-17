@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Column, Field, SQLModel
 
 from backend.app.models.database.mixins.timestamp import TimestampMixin
+from backend.app.models.database.spirits import Spirit
 
 
 class EventType(str, Enum):
@@ -20,7 +21,7 @@ class EventType(str, Enum):
 
 class EventBase(SQLModel):
     """Shared fields for Event model."""
-    agent_id: UUID = Field(foreign_key="agents.id", index=True)
+    spirit_id: UUID = Field(foreign_key="spirits.id", index=True, description="Owner spirit ID")
     event_type: str = Field(max_length=100, index=True)
     meta_summary: str | None = Field(default=None, description="Brief Cortex-generated summary", nullable=True)
     content: str = Field(description="Human-readable message content")
@@ -38,6 +39,9 @@ class Event(EventBase, TimestampMixin, table=True):
 
     id: UUID = Field(default=None, primary_key=True, sa_column_kwargs={"server_default": text("gen_random_uuid()")})
     is_deleted: bool = Field(default=False)
+
+    # Relationship to Spirit (will be fully wired after migrations)
+    # spirit: Spirit = Relationship(back_populates="events")
 
 
 class EventCreate(EventBase):
