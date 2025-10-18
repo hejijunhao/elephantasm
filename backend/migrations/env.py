@@ -15,6 +15,7 @@ from backend.app.core.config import settings
 # Import all models for autogenerate
 from backend.app.models.database.spirits import Spirit
 from backend.app.models.database.events import Event
+from backend.app.models.database.user import User
 from backend.app.models.database.mixins.timestamp import TimestampMixin
 
 # Import SQLModel's metadata

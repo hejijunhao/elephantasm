@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History
 
+- **0.0.9** (2025-10-18) - User Model + Marlin-Style Auth Integration: Automatic Provisioning via Database Triggers
 - **0.0.8** (2025-10-17) - Spirit Complete Pipeline: Domain Logic + REST API Routes
 - **0.0.7** (2025-10-17) - API Structure Simplification: Removed Versioning Complexity
 - **0.0.6** (2025-10-17) - Events REST API Endpoints: Complete CRUD with Smart Query Routing
@@ -16,6 +17,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.0.2** (2025-10-17) - Spirits Model + Async Database Layer + Naming Consistency
 - **0.0.1** (2025-10-17) - Foundation: TimestampMixin + Events model
 - **0.0.0** (2025-10-17) - Initial project structure (FastAPI + Next.js)
+
+---
+
+## [0.0.9] - 2025-10-18
+
+### Added
+
+**User Model with Marlin-Style Auth Integration** (`backend/app/models/database/user.py` - 52 lines)
+
+**Fields:**
+- `auth_uid` - UUID, unique, indexed (links to `auth.users.id`, required)
+- `email`, `first_name`, `last_name`, `phone`, `username` - All nullable for progressive enhancement
+- System fields: `id`, `is_deleted`, `created_at`, `updated_at` (TimestampMixin)
+
+**Database Migrations (2 total):**
+1. **Users Table** (`41fbe3ecb90a`) - Table creation with unique index on `auth_uid`
+2. **Auth Trigger** (`6d97e4d18837`) - `handle_new_user()` function + `on_auth_user_created` trigger for automatic user provisioning
+
+### Architecture: Two-Table Pattern
+
+**Separation of Concerns:**
+- `auth.users` (Supabase managed) - Authentication credentials, passwords, JWT
+- `public.users` (your schema) - Extended user profile and business data
+- Linked via `auth_uid` (unique constraint, not FK - cross-schema RLS compatibility)
+
+**Automatic Provisioning:**
+Signup → `auth.users` INSERT → Trigger fires → `handle_new_user()` → `public.users` record auto-created with `auth_uid` link
+
+### Technical Decisions
+
+**Database Trigger for Provisioning:**
+- Zero application code needed
+- Atomic (runs in same transaction as signup)
+- Uses `SECURITY DEFINER` to bypass RLS during provisioning
+- `ON CONFLICT` clause for idempotency
+
+**All Profile Fields Nullable:**
+- Minimizes signup friction
+- Progressive enhancement: collect critical data first, enrich later
+- Only `auth_uid` required (must come from Supabase Auth)
+
+**Pattern Consistency:**
+100% matches Spirit/Event models (Base + Table + DTOs, soft deletes, DB-level UUIDs)
+
+### Infrastructure
+
+**migrations/env.py:** Added User model import for autogenerate detection
+
+### Documentation
+
+- `docs/completions/user-model-implementation.md` - Complete implementation summary
+- `docs/plans/user-auth-trigger-setup.md` - Trigger SQL and setup guide
+- `docs/plans/user-models-marlin.md` - Reference architecture from production system
+
+### Deferred to Phase 2
+
+RLS policies, multi-tenancy (`enterprise_id`, `role`), helper functions, UserOperations domain logic, `/api/users/*` endpoints
+
+### Key Insights
+
+**Zero-Code Provisioning:** Database trigger eliminates entire category of bugs - application can't "forget" to create user profile.
+
+**Early Foundation:** Adding `auth_uid` before first migration avoids costly refactoring. Infrastructure ready for Phase 2 RLS and multi-tenancy.
+
+### Notes
+
+**Testing Status:**
+- ✅ Migrations applied, schema verified
+- ⏳ Manual signup flow test pending (Supabase Dashboard → Add User)
+
+**Status:** ✅ v0.0.9 Complete - User authentication infrastructure operational
 
 ---
 
