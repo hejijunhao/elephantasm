@@ -41,14 +41,31 @@ Each Memory typically contains:
 
 | Component             | Meaning                                                        |
 | --------------------- | -------------------------------------------------------------- |
-| **Essence / summary** | A compact narrative: “We learned X from trying Y.”             |
+| **Essence / summary** | A compact narrative: "We learned X from trying Y."             |
 | **Source links**      | IDs of events (or other memories) that birthed it.             |
-| **Importance**        | Weight in recall, curation priority.                           |
-| **Confidence**        | How sure the system is about its correctness or stability.     |
+| **Importance**        | Weight in recall, curation priority (0.0-1.0 float).           |
+| **Confidence**        | How sure the system is about its correctness or stability (0.0-1.0 float). |
+| **Recency**           | Pure temporal distance from occurrence (0.0-1.0 float, auto-computed). |
+| **Decay**             | Composite fading score based on importance, confidence, and recency (0.0-1.0 float, auto-computed). |
 | **Timespan**          | When the underlying events occurred (start–end).               |
-| **Tags / topics**     | Semantic hooks: “shipping routes,” “error handling,” “ethics.” |
+| **Tags / topics**     | Semantic hooks: "shipping routes," "error handling," "ethics." |
 | **State**             | Active → Decaying → Archived (controls recall frequency).      |
 | **Curator signals**   | e.g. reinforcement, merges, splits, contradictions.            |
+
+### Four-Factor Recall System
+
+Memory recall is driven by an interplay of four floating-point scores (all 0.0-1.0):
+
+1. **Importance** (static/semi-static): How significant the memory is. Set at creation, manually updated by curation.
+2. **Confidence** (static/semi-static): How stable/certain the memory is. Set at creation, manually updated by curation.
+3. **Recency** (auto-computed): Pure temporal distance. Fresh memories score high (1.0), old memories score low (→0.0).
+4. **Decay** (auto-computed): Composite fading score. Memories fade over time, but importance and confidence provide resistance.
+
+**Verbal Model**: We follow "high is good" semantics for positive signals:
+- **High importance** → stronger recall (positive signal)
+- **High confidence** → stronger recall (positive signal)
+- **High recency** → stronger recall (positive signal)
+- **High decay** → weaker recall (negative signal — memory has faded)
 
 ---
 
@@ -78,11 +95,31 @@ When a cluster is selected:
 
 ### c. **Recall**
 
-At runtime, the **pack compiler** pulls relevant Memories based on:
+At runtime, the **pack compiler** pulls relevant Memories based on multi-factor scoring:
 
-* vector similarity (semantic search),
-* structured filters (topic, importance, recency),
-* policy (e.g., one per domain per session).
+**Semantic Relevance**:
+* Vector similarity (semantic search)
+* Structured filters (topic, tags, state)
+* Policy constraints (e.g., one per domain per session)
+
+**Temporal & Salience Factors**:
+* **Importance**: Intrinsic weight (how significant the memory is)
+* **Confidence**: Trustworthiness (how stable/certain the memory is)
+* **Recency**: Temporal freshness (prefer recent context when relevant)
+* **Decay**: Fading resistance (penalize faded memories unless reinforced)
+
+**Recall Scoring** combines all factors. Example weighted formula:
+```
+recall_weight = (
+    semantic_relevance * 0.4 +     # How relevant to current query
+    importance * 0.25 +             # How significant the memory is
+    confidence * 0.15 +             # How trustworthy it is
+    recency_score * 0.15 +          # How fresh it is
+    (1.0 - decay_score) * 0.05      # Inverted decay (high decay = penalty)
+)
+```
+
+Coefficients are tunable based on use case (e.g., emphasize recency for conversational agents, importance for strategic planning).
 
 ### d. **Reflection / Curation**
 
@@ -95,8 +132,37 @@ The **Dreamer** (curation loop) revisits Memories periodically to:
 
 ### e. **Decay**
 
-Decay is not deletion; it’s gradual reduction of recall probability or confidence.
-You can model this with an exponential decay on “attention weight,” triggered by time or supersession.
+Decay is not deletion; it's gradual reduction of recall probability triggered by time, modulated by importance and confidence.
+
+**Key Distinction**:
+- **Recency** is objective/mechanical: pure temporal distance from occurrence
+- **Decay** is cognitive/psychological: how much the memory has faded from active recall
+
+**Mathematical Relationships** (initial hypothesis, tunable):
+
+```python
+# Recency Score: Fresh memories = 1.0, old memories → 0.0
+age_days = (now - time_end).days
+max_age_days = 365  # Configurable decay horizon (memories older than this → recency = 0)
+recency_score = max(0.0, 1.0 - (age_days / max_age_days))
+
+# Decay Score: Memories fade over time, but importance + confidence provide resistance
+base_decay_rate = 0.01  # Per day (configurable)
+resistance = sqrt(importance * confidence)  # Geometric mean as resistance factor
+decay_score = 1.0 - exp(-base_decay_rate * age_days * (1.0 - resistance))
+
+# Interpretation:
+# - High importance + high confidence → high resistance → slow decay
+# - Low importance or low confidence → low resistance → fast decay
+# - decay_score starts at 0.0 (fresh) and approaches 1.0 (fully faded) over time
+```
+
+**Auto-Update Strategy**:
+- **Option A**: Cached fields updated by Dreamer periodically (e.g., daily)
+- **Option B**: Computed on-the-fly during pack compilation (more accurate, no storage)
+- **Option C**: Hybrid—cache for performance, recompute when precision matters
+
+**Supersession**: Decay can also be triggered by newer, conflicting memories (not just time).
 
 ---
 
@@ -106,15 +172,18 @@ A lightweight schema suffices:
 
 **memory**
 
-* `id`
-* `spirit_id` (or owner)
-* `summary` (text)
-* `importance` (0–5)
-* `confidence` (0–1)
-* `state` (`active|decaying|archived`)
-* `time_start`, `time_end` (optional)
-* `meta` (topics, tags)
-* `created_at`, `updated_at`
+* `id` - UUID primary key
+* `spirit_id` - Owner/identity entity (FK to spirits.id)
+* `summary` - TEXT, compact narrative essence
+* `importance` - FLOAT (0.0–1.0), weight in recall/curation
+* `confidence` - FLOAT (0.0–1.0), stability/certainty
+* `recency_score` - FLOAT (0.0–1.0), cached temporal freshness (optional, auto-computed)
+* `decay_score` - FLOAT (0.0–1.0), cached fading score (optional, auto-computed)
+* `state` - ENUM (`active`, `decaying`, `archived`)
+* `time_start`, `time_end` - TIMESTAMP, when underlying events occurred (nullable)
+* `meta` - JSONB (topics, tags, curator signals)
+* `created_at`, `updated_at` - Automatic timestamp management
+* `is_deleted` - BOOLEAN, soft delete flag
 
 **memory_event_link**
 

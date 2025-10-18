@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History
 
+- **0.0.10** (2025-10-18) - Memory Model Database Layer: Four-Factor Recall System Foundation
 - **0.0.9** (2025-10-18) - User Model + Marlin-Style Auth Integration: Automatic Provisioning via Database Triggers
 - **0.0.8** (2025-10-17) - Spirit Complete Pipeline: Domain Logic + REST API Routes
 - **0.0.7** (2025-10-17) - API Structure Simplification: Removed Versioning Complexity
@@ -17,6 +18,131 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.0.2** (2025-10-17) - Spirits Model + Async Database Layer + Naming Consistency
 - **0.0.1** (2025-10-17) - Foundation: TimestampMixin + Events model
 - **0.0.0** (2025-10-17) - Initial project structure (FastAPI + Next.js)
+
+---
+
+## [0.0.10] - 2025-10-18
+
+### Added
+
+**Memory Model - Database Layer** (`backend/app/models/database/memories.py` - 72 lines)
+
+**Core Components:**
+- `MemoryState` enum - Lifecycle states: `active`, `decaying`, `archived`
+- `MemoryBase` - Shared fields with validation (all float scores constrained to 0.0-1.0)
+- `Memory` table entity - Inherits TimestampMixin, DB-level UUID generation
+- DTOs: `MemoryCreate`, `MemoryRead`, `MemoryUpdate`
+
+**Fields:**
+- `spirit_id` - UUID, FK to spirits.id, indexed (owner entity)
+- `summary` - TEXT, required (compact narrative essence)
+- `importance` - FLOAT (0.0-1.0), indexed (weight in recall priority)
+- `confidence` - FLOAT (0.0-1.0) (stability/certainty)
+- `state` - VARCHAR(20), indexed (lifecycle: active/decaying/archived)
+- `recency_score` - FLOAT (0.0-1.0), nullable (cached temporal freshness)
+- `decay_score` - FLOAT (0.0-1.0), nullable (cached fading score)
+- `time_start`, `time_end` - TIMESTAMPTZ, nullable (event span for multi-event memories)
+- `meta` - JSONB (topics, tags, curator signals)
+- System fields: `id`, `is_deleted`, `created_at`, `updated_at`
+
+**Database Migration** (`ea8543bfd9f8_add_memories_table.py`):
+- Created `memories` table with FK constraint to `spirits`
+- 4 indexes: `spirit_id`, `state`, `importance`, `time_end`
+- ENUM type for state field (active, decaying, archived)
+
+### Architecture: Four-Factor Recall System
+
+Memories are retrieved using composite scoring across four dimensions:
+
+1. **Importance** (static/semi-static): How significant the memory is
+2. **Confidence** (static/semi-static): How stable/certain the memory is
+3. **Recency** (auto-computed): Pure temporal distance from occurrence
+4. **Decay** (auto-computed): Composite fading score
+
+**Verbal Model**: "High is good" for positive signals
+- High importance/confidence/recency → stronger recall ✅
+- High decay → weaker recall ❌ (memory has faded)
+
+### Technical Decisions
+
+**Time Spans for Multi-Event Memories:**
+- `time_start` / `time_end` enable memories spanning multiple Events
+- Single event: `time_start = time_end = event.occurred_at`
+- Event cluster: `time_start = earliest`, `time_end = latest`
+- Supports synthesis: "Discussion about API errors from 2pm-4pm"
+
+**Nullable Recency/Decay Scores:**
+- Compute on-the-fly initially (always accurate, no staleness)
+- Can migrate to pre-computed when Dreamer is implemented
+- Simpler MVP approach, no background job needed yet
+
+**State Machine for Lifecycle:**
+- `ACTIVE` → `DECAYING` → `ARCHIVED` (graduated memory management)
+- Mirrors human memory: not all memories equally accessible
+- Dreamer can transition states during curation loops
+
+**JSONB for Flexible Metadata:**
+- Topics, tags, curator signals without schema migrations
+- GIN indexes support fast queries: `WHERE meta @> '{"topics": ["api-errors"]}'`
+- Example: `{"topics": ["api-errors"], "merged_from": [uuid1, uuid2]}`
+
+### Pattern Consistency
+
+100% architectural alignment with existing models:
+
+| Pattern                     | Events | Spirits | Users | **Memories** |
+| --------------------------- | ------ | ------- | ----- | ------------ |
+| Base + Table + DTOs         | ✅      | ✅       | ✅     | ✅            |
+| TimestampMixin              | ✅      | ✅       | ✅     | ✅            |
+| DB-level UUID generation    | ✅      | ✅       | ✅     | ✅            |
+| Soft deletes (`is_deleted`) | ✅      | ✅       | ✅     | ✅            |
+| JSONB metadata              | ✅      | ✅       | —     | ✅            |
+| Foreign key to Spirit       | ✅      | —       | —     | ✅            |
+| String enum for type/state  | ✅      | —       | —     | ✅            |
+
+### Changed
+
+**Spirit Model Relationship** (`backend/app/models/database/spirits.py`):
+- Uncommented bidirectional relationship: `memories: list["Memory"] = Relationship(back_populates="spirit")`
+- Enables efficient querying: `spirit.memories` without explicit joins
+
+**Migration Environment** (`backend/migrations/env.py`):
+- Added Memory model import for Alembic autogenerate detection
+
+### Documentation
+
+- `docs/completions/memory-model-db-layer-implementation.md` - Complete implementation summary
+- `docs/executing/memory-model-db-layer-implementation.md` - Original implementation plan
+
+### Deferred to v0.0.11+
+
+- ❌ `memory_event_link` junction table (Event → Memory provenance)
+- ❌ Domain operations (`MemoryOperations` class with CRUD methods)
+- ❌ API routes (`POST /api/memories`, `GET /api/memories`, etc.)
+- ❌ Memory synthesis logic (Cortex integration)
+
+### Key Insights
+
+**Second Cognitive Layer**: Memories represent the first level of abstraction above raw Events:
+- Events = "what happened" (objective)
+- Memories = "what it meant" (subjective)
+
+**Multi-Dimensional Relevance**: Four-factor recall models human-like memory. Composite scoring enables nuanced queries like:
+- "High importance, low confidence" = needs verification
+- "High recency, high decay" = short-term memory fading fast
+- "Low importance, high confidence" = trivia (stable but minor)
+
+**Foundation for Intelligence**: With Memories in place, next steps are Pack Compiler (deterministic retrieval), Cortex (memory synthesis), and Dreamer (curation loops).
+
+### Notes
+
+**Testing Status:**
+- ✅ Model file created, migration executed successfully
+- ✅ Schema verified in Supabase (table, indexes, FK constraint)
+- ⏳ Domain operations pending (v0.0.11)
+- ⏳ API routes pending (v0.0.11)
+
+**Status:** ✅ v0.0.10 Complete - Memory database layer operational, ready for domain logic implementation
 
 ---
 

@@ -27,7 +27,7 @@ class Spirit(SpiritBase, TimestampMixin, table=True):
 
     # Relationships
     events: list["Event"] = Relationship(back_populates="spirit")
-    # memories: list["Memory"] = Relationship(back_populates="spirit") #TODO: populate after memories model
+    memories: list["Memory"] = Relationship(back_populates="spirit")
 
 
 class SpiritCreate(SpiritBase):
